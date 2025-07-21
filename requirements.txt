@@ -1,0 +1,6 @@
+Flask
+flask-cors
+requests
+faster-whisper
+google-generativeai
+gTTS
