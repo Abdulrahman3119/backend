@@ -54,7 +54,7 @@ def transcribe_audio():
         finally:
             os.remove(tmp.name)
 
-    webhook_url = "http://localhost:5678/webhook/from-whisper"
+    webhook_url = "https://n8n.ai.oofoq.com/webhook/from-whisper"
     try:
         res = requests.post(webhook_url, json={"text": text}, timeout=30)
         n8n_response = res.json()
