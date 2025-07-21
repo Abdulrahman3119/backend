@@ -1,4 +1,5 @@
 annotated-types==0.7.0
+elevenlabs
 anyio==4.9.0
 av==15.0.0
 beautifulsoup4==4.13.4
