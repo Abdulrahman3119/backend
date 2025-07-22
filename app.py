@@ -9,8 +9,6 @@ from flask_cors import CORS
 import wave
 import base64
 import subprocess
-from elevenlabs import VoiceSettings
-from elevenlabs.client import ElevenLabs
 
 app = Flask(__name__)
 CORS(app)
@@ -23,8 +21,7 @@ GEMINI_API_KEY = "AIzaSyAHGHJG_jsdk97QlqkmAlmN4uCDbSPC0cE"
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # إعداد ElevenLabs
-ELEVENLABS_API_KEY = "sk_d9f948149d73eda013af98e7158dd81c3fc0cdf326233691"  # ضع مفتاح API الخاص بك
-elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+ELEVENLABS_API_KEY = "sk_d9f948149d73eda013af98e7158dd81c3fc0cdf326233691"
 
 # تكوين الأصوات المختلفة
 VOICE_MODELS = {
@@ -32,20 +29,14 @@ VOICE_MODELS = {
         "name": "Gemini AI",
         "description": "صوت ذكي وواضح من Google"
     },
-    "elevenlabs_adam": {
-        "name": "Adam - ElevenLabs", 
-        "description": "صوت رجالي دافئ وودود",
-        "voice_id": "pNInz6obpgDQGcFmaJgB"  # Adam voice ID
+    "elevenlabs": {
+        "name": "ElevenLabs Arabic Voice",
+        "description": "صوت عربي طبيعي من ElevenLabs",
+        "voice_id": "QRq5hPRAKf5ZhSlTBH6r"  # الصوت العربي
     },
-    "elevenlabs_bella": {
-        "name": "Bella - ElevenLabs",
-        "description": "صوت نسائي عذب ومفهوم", 
-        "voice_id": "EXAVITQu4vr4xnSDxMaL"  # Bella voice ID
-    },
-    "elevenlabs_charlie": {
-        "name": "Charlie - ElevenLabs",
-        "description": "صوت شبابي حيوي ومرح",
-        "voice_id": "IKne3meq5aSn9XLyUdCD"  # Charlie voice ID
+    "gtts": {
+        "name": "Google TTS",
+        "description": "صوت Google التقليدي"
     }
 }
 
@@ -94,44 +85,47 @@ def generate_gemini_audio(text):
         print("❌ Gemini TTS error:", e)
         return False
 
-# دالة لتوليد الصوت باستخدام ElevenLabs
+# دالة لتوليد الصوت باستخدام ElevenLabs API المباشر
 def generate_elevenlabs_audio(text, voice_id):
     try:
-        # توليد الصوت
-        audio_generator = elevenlabs_client.generate(
-            text=text,
-            voice=voice_id,
-            voice_settings=VoiceSettings(
-                stability=0.5,
-                similarity_boost=0.75,
-                style=0.5,
-                use_speaker_boost=True
-            ),
-            model="eleven_multilingual_v2"  # يدعم العربية
-        )
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         
-        # حفظ الصوت
-        with open("out.mp3", "wb") as f:
-            for chunk in audio_generator:
-                f.write(chunk)
+        headers = {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": ELEVENLABS_API_KEY
+        }
         
-        print(f"✅ ElevenLabs audio generated with voice {voice_id}")
-        return True
+        data = {
+            "text": text,
+            "model_id": "eleven_multilingual_v2"
+        }
         
+        response = requests.post(url, headers=headers, json=data)
+        
+        if response.status_code == 200:
+            with open("out.mp3", "wb") as f:
+                f.write(response.content)
+            print("✅ ElevenLabs audio generated successfully")
+            return True
+        else:
+            print(f"❌ ElevenLabs API error: {response.status_code} - {response.text}")
+            return False
+            
     except Exception as e:
         print(f"❌ ElevenLabs error: {e}")
         return False
 
-# دالة fallback لـ gTTS
+# دالة لتوليد الصوت باستخدام gTTS
 def generate_gtts_audio(text):
     try:
         from gtts import gTTS
         tts = gTTS(text=text, lang='ar')
         tts.save("out.mp3")
-        print("✅ gTTS fallback successful")
+        print("✅ gTTS audio generated")
         return True
     except Exception as e:
-        print(f"❌ gTTS fallback error: {e}")
+        print(f"❌ gTTS error: {e}")
         return False
 
 @app.route('/voice-models', methods=['GET'])
@@ -188,12 +182,16 @@ def transcribe_audio():
     if voice_model == "gemini":
         audio_generated = generate_gemini_audio(output_text)
     
-    elif voice_model.startswith("elevenlabs_"):
+    elif voice_model == "elevenlabs":
         voice_config = VOICE_MODELS[voice_model]
         audio_generated = generate_elevenlabs_audio(output_text, voice_config["voice_id"])
     
+    elif voice_model == "gtts":
+        audio_generated = generate_gtts_audio(output_text)
+    
     # fallback إلى gTTS في حالة الفشل
     if not audio_generated:
+        print("⚠️ Primary TTS failed, falling back to gTTS")
         audio_generated = generate_gtts_audio(output_text)
 
     return jsonify({
@@ -229,9 +227,11 @@ def test_voice(voice_model):
     
     if voice_model == "gemini":
         audio_generated = generate_gemini_audio(test_text)
-    elif voice_model.startswith("elevenlabs_"):
+    elif voice_model == "elevenlabs":
         voice_config = VOICE_MODELS[voice_model]
         audio_generated = generate_elevenlabs_audio(test_text, voice_config["voice_id"])
+    elif voice_model == "gtts":
+        audio_generated = generate_gtts_audio(test_text)
     
     if not audio_generated:
         audio_generated = generate_gtts_audio(test_text)
